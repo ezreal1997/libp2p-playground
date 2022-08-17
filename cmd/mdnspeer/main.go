@@ -11,11 +11,8 @@ import (
 
 	"github.com/libp2p/go-libp2p"
 
-	"playground/pubsub"
+	"github.com/ezreal1997/libp2p-playground/pubsubpeer"
 )
-
-// DiscoveryServiceTag is used in our mDNS advertisements to discover other chat peers.
-const DiscoveryServiceTag = "default-pubsub-service"
 
 func main() {
 	// parse topic flag
@@ -35,12 +32,12 @@ func main() {
 	fmt.Printf("listen addr: %s\n", h.Addrs())
 	fmt.Printf("host id: %s\n", h.ID().Pretty())
 
-	mdnsSvr, err := pubsub.NewMdns(ctx, h, *topicName, *discoveryTag)
+	mdnsSvr, err := pubsubpeer.NewMdns(ctx, h, *topicName, *discoveryTag)
 	if err != nil {
 		panic(err)
 	}
 	mdnsSvr.Run(func(msg []byte) error {
-		var record pubsub.TopicRecord
+		var record pubsubpeer.TopicRecord
 		if err := json.Unmarshal(msg, &record); err != nil {
 			return err
 		}

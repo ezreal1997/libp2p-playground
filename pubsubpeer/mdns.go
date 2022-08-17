@@ -1,4 +1,4 @@
-package pubsub
+package pubsubpeer
 
 import (
 	"context"
@@ -7,35 +7,35 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pkg/errors"
-
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/peer"
-	pubsubp2p "github.com/libp2p/go-libp2p-pubsub"
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/p2p/discovery/mdns"
+	"github.com/pkg/errors"
 )
 
-type MdnPubSub struct {
-	ctx       context.Context
-	cancel    context.CancelFunc
-	wg        *sync.WaitGroup
-	h         host.Host
-	gossipSvr *pubsubp2p.PubSub
-	topic     *pubsubp2p.Topic
-	sub       *pubsubp2p.Subscription
+type MdnsPubSub struct {
+	ctx         context.Context
+	cancel      context.CancelFunc
+	wg          *sync.WaitGroup
+	h           host.Host
+	mdnsService mdns.Service
+	gossipSvr   *pubsub.PubSub
+	topic       *pubsub.Topic
+	sub         *pubsub.Subscription
 }
 
-func NewMdns(ctx context.Context, h host.Host, topicName, discoveryTag string) (*MdnPubSub, error) {
+func NewMdns(ctx context.Context, h host.Host, topicName, discoveryTag string) (*MdnsPubSub, error) {
 	mCtx, mCancel := context.WithCancel(ctx)
 	// create a new PubSub service using the GossipSub router
-	gs, err := pubsubp2p.NewGossipSub(mCtx, h)
+	gs, err := pubsub.NewGossipSub(mCtx, h)
 	if err != nil {
 		mCancel()
 		return nil, err
 	}
 	// setup local mDNS discovery
-	s := mdns.NewMdnsService(h, discoveryTag, &mdnsNotifee{ctx: mCtx, h: h})
-	if err := s.Start(); err != nil {
+	mdnsService, err := SetupDiscovery(mCtx, h, discoveryTag)
+	if err != nil {
 		mCancel()
 		return nil, err
 	}
@@ -52,30 +52,37 @@ func NewMdns(ctx context.Context, h host.Host, topicName, discoveryTag string) (
 		return nil, err
 	}
 
-	return &MdnPubSub{
-		ctx:       mCtx,
-		cancel:    mCancel,
-		wg:        &sync.WaitGroup{},
-		h:         h,
-		gossipSvr: gs,
-		topic:     topic,
-		sub:       sub,
+	return &MdnsPubSub{
+		ctx:         mCtx,
+		cancel:      mCancel,
+		wg:          &sync.WaitGroup{},
+		h:           h,
+		mdnsService: mdnsService,
+		gossipSvr:   gs,
+		topic:       topic,
+		sub:         sub,
 	}, nil
 }
 
-func (m *MdnPubSub) Run(msgHandler func(msg []byte) error) {
+func (m *MdnsPubSub) Run(msgHandler func(msg []byte) error) {
 	m.wg.Add(1)
 	go m.readLoop(msgHandler)
 }
 
-func (m *MdnPubSub) Stop() {
+func (m *MdnsPubSub) Stop() {
 	m.cancel()
+	
+	m.mdnsService.Close()
+	m.topic.Close()
+	m.sub.Cancel()
+
 	m.wg.Wait()
 }
 
-func (m *MdnPubSub) readLoop(msgHandler func(msg []byte) error) {
+func (m *MdnsPubSub) readLoop(msgHandler func(msg []byte) error) {
 	defer m.wg.Done()
 	t := time.NewTicker(50 * time.Millisecond)
+	defer t.Stop()
 	for {
 		select {
 		case <-m.ctx.Done():
@@ -104,7 +111,7 @@ func (m *MdnPubSub) readLoop(msgHandler func(msg []byte) error) {
 	}
 }
 
-func (m *MdnPubSub) Publish(msg string) error {
+func (m *MdnsPubSub) Publish(msg string) error {
 	record := TopicRecord{
 		Message:  msg,
 		SenderID: m.h.ID().Pretty(),
@@ -116,23 +123,6 @@ func (m *MdnPubSub) Publish(msg string) error {
 	return m.topic.Publish(m.ctx, msgBytes)
 }
 
-func (m *MdnPubSub) ListPeers() []peer.ID {
+func (m *MdnsPubSub) ListPeers() []peer.ID {
 	return m.gossipSvr.ListPeers(m.topic.String())
-}
-
-// mdnsNotifee gets notified when we find a new peer via mDNS discovery
-type mdnsNotifee struct {
-	ctx context.Context
-	h   host.Host
-}
-
-// HandlePeerFound connects to peers discovered via mDNS. Once they're connected,
-// the PubSub system will automatically start interacting with them if they also
-// support PubSub.
-func (n *mdnsNotifee) HandlePeerFound(pi peer.AddrInfo) {
-	fmt.Printf("discovered new peer %s\n", pi.ID.Pretty())
-	err := n.h.Connect(context.Background(), pi)
-	if err != nil {
-		fmt.Printf("error connecting to peer %s: %v\n", pi.ID.Pretty(), err)
-	}
 }

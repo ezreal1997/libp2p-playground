@@ -1,7 +1,7 @@
 # libp2p-playground
 
 ```bash
-$ go run ./cmd/pubsub -topic=topic
+$ go run ./cmd/mdnspubsub -topic=topic
 # Another terminal
-$ go run ./cmd/pubsub -topic=topic
+$ go run ./cmd/mdnspubsub -topic=topic
 ```

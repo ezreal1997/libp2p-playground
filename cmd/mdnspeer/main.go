@@ -14,12 +14,16 @@ import (
 	"github.com/ezreal1997/libp2p-playground/pubsubpeer"
 )
 
-func main() {
-	// parse topic flag
-	topicName := flag.String("topic", "default-topic", "topic name")
-	discoveryTag := flag.String("discovery", "default-pubsub-service", "discovery tag")
-	flag.Parse()
+var (
+	topicName    = flag.String("topic", "default-topic", "topic name")
+	discoveryTag = flag.String("discovery", "default-pubsub-service", "discovery tag")
+)
 
+func init() {
+	flag.Parse()
+}
+
+func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

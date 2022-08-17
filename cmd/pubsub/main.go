@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"time"
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p-core/host"
@@ -37,6 +38,8 @@ func main() {
 		panic(err)
 	}
 	defer h.Close()
+	fmt.Printf("listen addr: %s\n", h.Addrs())
+	fmt.Printf("host id: %s\n", h.ID().Pretty())
 
 	// create a new PubSub service using the GossipSub router
 	ps, err := pubsub.NewGossipSub(ctx, h)
@@ -76,7 +79,8 @@ func main() {
 
 	go func() {
 		for {
-			msg, err := sub.Next(ctx)
+			ctxRead, _ := context.WithTimeout(ctx, time.Second)
+			msg, err := sub.Next(ctxRead)
 			if err != nil {
 				panic(err)
 			}
